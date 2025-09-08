@@ -47,9 +47,6 @@ jobs:
           # Verify the CLI tool works
           ./vt version
 
-          # Move to a location in PATH
-          sudo mv vt /usr/local/bin/
-
           echo "VirusTotal CLI installed successfully"
 
       - name: Get latest release information
@@ -109,7 +106,7 @@ jobs:
 
           # Submit file to VirusTotal using CLI
           echo "Scanning file with VirusTotal CLI..."
-          SCAN_OUTPUT=$(vt scan file "${{ steps.get-release.outputs.asset_name }}" --json 2>&1)
+          SCAN_OUTPUT=$(./vt scan file "${{ steps.get-release.outputs.asset_name }}" --json 2>&1)
 
           if [ $? -eq 0 ]; then
             # Extract analysis ID from the CLI output
