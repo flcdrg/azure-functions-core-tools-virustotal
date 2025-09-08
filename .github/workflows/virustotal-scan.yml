@@ -101,7 +101,6 @@ jobs:
         id: download
 
       - name: Submit to VirusTotal using CLI
-        if: env.VIRUSTOTAL_API_KEY != '' && steps.download.conclusion == 'success'
         id: virustotal
         env:
           VTCLI_APIKEY: ${{ secrets.VTCLI_APIKEY }}
