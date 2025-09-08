@@ -119,47 +119,54 @@ jobs:
               echo "Waiting 30 seconds for analysis to complete..."
               sleep 30
               # Check analysis status using CLI
-              echo "Checking analysis status..."
-              ANALYSIS_RESULT=$(./vt analysis "$ANALYSIS_ID" --format json 2>&1)
-
-              if [ $? -eq 0 ]; then
-                STATUS=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].status // "unknown"')
-                echo "Analysis status: $STATUS"
-                
-                if [ "$STATUS" = "completed" ]; then
-                  # Get file hash from analysis result
-                  FILE_HASH=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].meta.file_info.sha256 // empty')
-                  
-                  if [ -n "$FILE_HASH" ]; then
-                    # Get detailed file information using CLI
-                    echo "Getting detailed scan results for hash: $FILE_HASH"
-                    # Use stats from analysis result JSON
-                    MALICIOUS=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].stats.malicious // 0')
-                    SUSPICIOUS=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].stats.suspicious // 0')
-                    UNDETECTED=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].stats.undetected // 0')
-                    HARMLESS=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].stats.harmless // 0')
-                          
-                    echo "VirusTotal Results:"
-                    echo "- Malicious: $MALICIOUS"
-                    echo "- Suspicious: $SUSPICIOUS"
-                    echo "- Undetected: $UNDETECTED"
-                    echo "- Harmless: $HARMLESS"
-                          
-                    echo "malicious=$MALICIOUS" >> $GITHUB_OUTPUT
-                    echo "suspicious=$SUSPICIOUS" >> $GITHUB_OUTPUT
-                    echo "undetected=$UNDETECTED" >> $GITHUB_OUTPUT
-                    echo "harmless=$HARMLESS" >> $GITHUB_OUTPUT
-                    echo "file_hash=$FILE_HASH" >> $GITHUB_OUTPUT
-                  else
-                    echo "Could not extract file hash from analysis result"
+              # Retry querying analysis up to 10 times or until status is 'completed'
+              MAX_RETRIES=10
+              RETRY_DELAY=10
+              RETRY_COUNT=0
+              STATUS="unknown"
+              while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+                echo "Checking analysis status (attempt $((RETRY_COUNT+1))/$MAX_RETRIES)..."
+                ANALYSIS_RESULT=$(./vt analysis "$ANALYSIS_ID" --format json 2>&1)
+                if [ $? -eq 0 ]; then
+                  STATUS=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].status // "unknown"')
+                  echo "Analysis status: $STATUS"
+                  if [ "$STATUS" = "completed" ]; then
+                    break
                   fi
                 else
-                  echo "Analysis not yet completed. Status: $STATUS"
-                  echo "You can check the results later using: vt analysis $ANALYSIS_ID"
+                  echo "Failed to check analysis status"
+                  echo "Analysis check error: $ANALYSIS_RESULT"
+                fi
+                RETRY_COUNT=$((RETRY_COUNT+1))
+                sleep $RETRY_DELAY
+              done
+              if [ "$STATUS" = "completed" ]; then
+                # Get file hash from analysis result
+                FILE_HASH=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].meta.file_info.sha256 // empty')
+                if [ -n "$FILE_HASH" ]; then
+                  # Get detailed file information using CLI
+                  echo "Getting detailed scan results for hash: $FILE_HASH"
+                  # Use stats from analysis result JSON
+                  MALICIOUS=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].stats.malicious // 0')
+                  SUSPICIOUS=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].stats.suspicious // 0')
+                  UNDETECTED=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].stats.undetected // 0')
+                  HARMLESS=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].stats.harmless // 0')
+                  echo "VirusTotal Results:"
+                  echo "- Malicious: $MALICIOUS"
+                  echo "- Suspicious: $SUSPICIOUS"
+                  echo "- Undetected: $UNDETECTED"
+                  echo "- Harmless: $HARMLESS"
+                  echo "malicious=$MALICIOUS" >> $GITHUB_OUTPUT
+                  echo "suspicious=$SUSPICIOUS" >> $GITHUB_OUTPUT
+                  echo "undetected=$UNDETECTED" >> $GITHUB_OUTPUT
+                  echo "harmless=$HARMLESS" >> $GITHUB_OUTPUT
+                  echo "file_hash=$FILE_HASH" >> $GITHUB_OUTPUT
+                else
+                  echo "Could not extract file hash from analysis result"
                 fi
               else
-                echo "Failed to check analysis status"
-                echo "Analysis check error: $ANALYSIS_RESULT"
+                echo "Analysis not completed after $MAX_RETRIES attempts. Status: $STATUS"
+                echo "You can check the results later using: vt analysis $ANALYSIS_ID"
               fi
             else
               echo "Could not extract analysis ID from scan output"
