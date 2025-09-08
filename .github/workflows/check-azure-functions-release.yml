@@ -1,0 +1,102 @@
+name: Check Azure Functions Core Tools Latest Release
+
+on:
+  # Run manually
+  workflow_dispatch:
+  
+  # Run daily at 8 AM UTC to check for new releases
+  schedule:
+    - cron: '0 8 * * *'
+
+jobs:
+  check-latest-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v5
+      
+    - name: Get latest release from Azure Functions Core Tools
+      id: get-release
+      run: |
+        # Use GitHub API to get the latest release
+        RELEASE_INFO=$(curl -s \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "User-Agent: azure-functions-core-tools-virustotal" \
+          "https://api.github.com/repos/Azure/azure-functions-core-tools/releases/latest")
+        
+        # Extract release information
+        TAG_NAME=$(echo "$RELEASE_INFO" | jq -r '.tag_name')
+        RELEASE_NAME=$(echo "$RELEASE_INFO" | jq -r '.name')
+        PUBLISHED_AT=$(echo "$RELEASE_INFO" | jq -r '.published_at')
+        HTML_URL=$(echo "$RELEASE_INFO" | jq -r '.html_url')
+        DOWNLOAD_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | contains("linux-x64")) | .browser_download_url' | head -1)
+        
+        # Output the information
+        echo "Latest Azure Functions Core Tools Release:"
+        echo "Tag: $TAG_NAME"
+        echo "Name: $RELEASE_NAME"
+        echo "Published: $PUBLISHED_AT"
+        echo "URL: $HTML_URL"
+        echo "Download URL (Linux x64): $DOWNLOAD_URL"
+        
+        # Set outputs for other steps to use
+        echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+        echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+        echo "published_at=$PUBLISHED_AT" >> $GITHUB_OUTPUT
+        echo "html_url=$HTML_URL" >> $GITHUB_OUTPUT
+        echo "download_url=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
+        
+    - name: Display release information
+      run: |
+        echo "## Latest Azure Functions Core Tools Release" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Tag:** ${{ steps.get-release.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Name:** ${{ steps.get-release.outputs.release_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Published:** ${{ steps.get-release.outputs.published_at }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **URL:** [${{ steps.get-release.outputs.tag_name }}](${{ steps.get-release.outputs.html_url }})" >> $GITHUB_STEP_SUMMARY
+        echo "- **Download URL:** ${{ steps.get-release.outputs.download_url }}" >> $GITHUB_STEP_SUMMARY
+        
+    - name: Check if this is a new release
+      id: check-new
+      run: |
+        # Check if we have a previous release recorded
+        if [ -f "last_release.txt" ]; then
+          LAST_RELEASE=$(cat last_release.txt)
+          CURRENT_RELEASE="${{ steps.get-release.outputs.tag_name }}"
+          
+          if [ "$LAST_RELEASE" != "$CURRENT_RELEASE" ]; then
+            echo "New release detected: $CURRENT_RELEASE (previous: $LAST_RELEASE)"
+            echo "is_new=true" >> $GITHUB_OUTPUT
+          else
+            echo "No new release. Current: $CURRENT_RELEASE"
+            echo "is_new=false" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "No previous release recorded. Treating as new."
+          echo "is_new=true" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Update release tracking file
+      if: steps.check-new.outputs.is_new == 'true'
+      run: |
+        echo "${{ steps.get-release.outputs.tag_name }}" > last_release.txt
+        
+    - name: Commit updated release tracking
+      if: steps.check-new.outputs.is_new == 'true'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add last_release.txt
+        git commit -m "Update latest release to ${{ steps.get-release.outputs.tag_name }}" || exit 0
+        git push || exit 0
+        
+    - name: Create issue for new release (optional)
+      if: steps.check-new.outputs.is_new == 'true' && github.event_name == 'schedule'
+      run: |
+        echo "New Azure Functions Core Tools release detected: ${{ steps.get-release.outputs.tag_name }}"
+        echo "You could extend this workflow to:"
+        echo "- Create an issue about the new release"
+        echo "- Download and scan the binaries with VirusTotal"
+        echo "- Send notifications"
+        echo "- Trigger other workflows"
