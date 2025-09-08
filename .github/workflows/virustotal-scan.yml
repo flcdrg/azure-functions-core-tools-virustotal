@@ -106,28 +106,24 @@ jobs:
 
           # Submit file to VirusTotal using CLI
           echo "Scanning file with VirusTotal CLI..."
-          # ./vt scan file "${{ steps.get-release.outputs.asset_name }}" --format json 2>&1
 
-          SCAN_OUTPUT=$(./vt scan file "${{ steps.get-release.outputs.asset_name }}" --format json 2>&1)
+          SCAN_OUTPUT=$(./vt scan file "${{ steps.get-release.outputs.asset_name }}" --silent 2>&1)
 
           if [ $? -eq 0 ]; then
-            # Extract analysis ID from the CLI output
-            ANALYSIS_ID=$(echo "$SCAN_OUTPUT" | jq -r '.id // empty')
-            
-            if [ -n "$ANALYSIS_ID" ]; then
-              echo "File submitted successfully. Analysis ID: $ANALYSIS_ID"
-              echo "analysis_id=$ANALYSIS_ID" >> $GITHUB_OUTPUT
-              
-              # Wait a bit for analysis to start
-              echo "Waiting for analysis to complete..."
-              sleep 30
-              
-              # Check analysis status using CLI
+              # Extract analysis ID from the CLI output (second component)
+              ANALYSIS_ID=$(echo "$SCAN_OUTPUT" | awk '{print $2}')
+              if [ -n "$ANALYSIS_ID" ]; then
+                echo "File submitted successfully. Analysis ID: $ANALYSIS_ID"
+                echo "analysis_id=$ANALYSIS_ID" >> $GITHUB_OUTPUT
+                # Wait a bit for analysis to start
+                echo "Waiting for analysis to complete..."
+                sleep 30
+                # Check analysis status using CLI
               echo "Checking analysis status..."
               ANALYSIS_RESULT=$(./vt analysis "$ANALYSIS_ID" --format json 2>&1)
 
               if [ $? -eq 0 ]; then
-                STATUS=$(echo "$ANALYSIS_RESULT" | jq -r '.attributes.status // "unknown"')
+                STATUS=$(echo "$ANALYSIS_RESULT" | jq -r '.status // "unknown"')
                 echo "Analysis status: $STATUS"
                 
                 if [ "$STATUS" = "completed" ]; then
@@ -137,29 +133,23 @@ jobs:
                   if [ -n "$FILE_HASH" ]; then
                     # Get detailed file information using CLI
                     echo "Getting detailed scan results for hash: $FILE_HASH"
-                    FILE_RESULT=$(./vt file "$FILE_HASH" --format json 2>&1)
-
-                    if [ $? -eq 0 ]; then
-                      MALICIOUS=$(echo "$FILE_RESULT" | jq -r '.attributes.last_analysis_stats.malicious // 0')
-                      SUSPICIOUS=$(echo "$FILE_RESULT" | jq -r '.attributes.last_analysis_stats.suspicious // 0')
-                      UNDETECTED=$(echo "$FILE_RESULT" | jq -r '.attributes.last_analysis_stats.undetected // 0')
-                      HARMLESS=$(echo "$FILE_RESULT" | jq -r '.attributes.last_analysis_stats.harmless // 0')
-                      
-                      echo "VirusTotal Results:"
-                      echo "- Malicious: $MALICIOUS"
-                      echo "- Suspicious: $SUSPICIOUS"
-                      echo "- Undetected: $UNDETECTED"
-                      echo "- Harmless: $HARMLESS"
-                      
-                      echo "malicious=$MALICIOUS" >> $GITHUB_OUTPUT
-                      echo "suspicious=$SUSPICIOUS" >> $GITHUB_OUTPUT
-                      echo "undetected=$UNDETECTED" >> $GITHUB_OUTPUT
-                      echo "harmless=$HARMLESS" >> $GITHUB_OUTPUT
-                      echo "file_hash=$FILE_HASH" >> $GITHUB_OUTPUT
-                    else
-                      echo "Failed to get detailed file results"
-                      echo "File result error: $FILE_RESULT"
-                    fi
+                    # Use stats from analysis result JSON
+                    MALICIOUS=$(echo "$ANALYSIS_RESULT" | jq -r '.stats.malicious // 0')
+                    SUSPICIOUS=$(echo "$ANALYSIS_RESULT" | jq -r '.stats.suspicious // 0')
+                    UNDETECTED=$(echo "$ANALYSIS_RESULT" | jq -r '.stats.undetected // 0')
+                    HARMLESS=$(echo "$ANALYSIS_RESULT" | jq -r '.stats.harmless // 0')
+                          
+                    echo "VirusTotal Results:"
+                    echo "- Malicious: $MALICIOUS"
+                    echo "- Suspicious: $SUSPICIOUS"
+                    echo "- Undetected: $UNDETECTED"
+                    echo "- Harmless: $HARMLESS"
+                          
+                    echo "malicious=$MALICIOUS" >> $GITHUB_OUTPUT
+                    echo "suspicious=$SUSPICIOUS" >> $GITHUB_OUTPUT
+                    echo "undetected=$UNDETECTED" >> $GITHUB_OUTPUT
+                    echo "harmless=$HARMLESS" >> $GITHUB_OUTPUT
+                    echo "file_hash=$FILE_HASH" >> $GITHUB_OUTPUT
                   else
                     echo "Could not extract file hash from analysis result"
                   fi
@@ -212,8 +202,3 @@ jobs:
           path: |
             ${{ steps.get-release.outputs.asset_name }}
           retention-days: 30
-
-      - name: Clean up downloaded files
-        if: always()
-        run: |
-          rm -f "${{ steps.get-release.outputs.asset_name }}" || true
