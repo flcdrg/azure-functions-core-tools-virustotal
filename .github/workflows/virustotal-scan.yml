@@ -106,6 +106,8 @@ jobs:
 
           # Submit file to VirusTotal using CLI
           echo "Scanning file with VirusTotal CLI..."
+          ./vt scan file "${{ steps.get-release.outputs.asset_name }}" --json 2>&1
+          
           SCAN_OUTPUT=$(./vt scan file "${{ steps.get-release.outputs.asset_name }}" --json 2>&1)
 
           if [ $? -eq 0 ]; then
