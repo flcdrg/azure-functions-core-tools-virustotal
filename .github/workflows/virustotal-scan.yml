@@ -1,30 +1,26 @@
-name: Download and Scan Azure Functions Core Tools with VirusTotal
+name: Download and Scan Azure Functions Core Tools with VirusTotal CLI
 
 on:
   # Run manually
   workflow_dispatch:
     inputs:
       force_download:
-        description: 'Force download even if release has not changed'
+        description: "Force download even if release has not changed"
         required: false
         default: false
         type: boolean
-  
+
   # Run when the check release workflow finds a new release
   workflow_run:
     workflows: ["Check Azure Functions Core Tools Latest Release"]
     types:
       - completed
 
-env:
-  # Set this as a repository secret: VIRUSTOTAL_API_KEY
-  VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
-
 jobs:
   download-and-scan:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
-    
+
     strategy:
       matrix:
         platform:
@@ -34,156 +30,192 @@ jobs:
             pattern: "win-x64"
           - name: "osx-x64"
             pattern: "osx-x64"
-    
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v5
-      
-    - name: Get latest release information
-      id: get-release
-      run: |
-        # Get the latest release from Azure Functions Core Tools
-        RELEASE_INFO=$(curl -s \
-          -H "Accept: application/vnd.github.v3+json" \
-          -H "User-Agent: azure-functions-core-tools-virustotal" \
-          "https://api.github.com/repos/Azure/azure-functions-core-tools/releases/latest")
-        
-        TAG_NAME=$(echo "$RELEASE_INFO" | jq -r '.tag_name')
-        
-        # Find the download URL for the current platform
-        DOWNLOAD_URL=$(echo "$RELEASE_INFO" | jq -r --arg pattern "${{ matrix.platform.pattern }}" \
-          '.assets[] | select(.name | contains($pattern)) | .browser_download_url' | head -1)
-        
-        ASSET_NAME=$(echo "$RELEASE_INFO" | jq -r --arg pattern "${{ matrix.platform.pattern }}" \
-          '.assets[] | select(.name | contains($pattern)) | .name' | head -1)
-        
-        echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-        echo "download_url=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
-        echo "asset_name=$ASSET_NAME" >> $GITHUB_OUTPUT
-        
-        echo "Release: $TAG_NAME"
-        echo "Platform: ${{ matrix.platform.name }}"
-        echo "Download URL: $DOWNLOAD_URL"
-        echo "Asset Name: $ASSET_NAME"
-        
-    - name: Download Azure Functions Core Tools binary
-      if: steps.get-release.outputs.download_url != 'null' && steps.get-release.outputs.download_url != ''
-      run: |
-        echo "Downloading ${{ steps.get-release.outputs.asset_name }}..."
-        curl -L -o "${{ steps.get-release.outputs.asset_name }}" "${{ steps.get-release.outputs.download_url }}"
-        
-        # Verify download
-        if [ -f "${{ steps.get-release.outputs.asset_name }}" ]; then
-          echo "Download successful!"
-          ls -la "${{ steps.get-release.outputs.asset_name }}"
-          
-          # Calculate file hash
-          SHA256_HASH=$(sha256sum "${{ steps.get-release.outputs.asset_name }}" | cut -d' ' -f1)
-          echo "SHA256: $SHA256_HASH"
-          echo "sha256_hash=$SHA256_HASH" >> $GITHUB_OUTPUT
-        else
-          echo "Download failed!"
-          exit 1
-        fi
-      id: download
-        
-    - name: Submit to VirusTotal
-      if: env.VIRUSTOTAL_API_KEY != '' && steps.download.conclusion == 'success'
-      id: virustotal
-      run: |
-        echo "Submitting ${{ steps.get-release.outputs.asset_name }} to VirusTotal..."
-        
-        # Submit file to VirusTotal
-        RESPONSE=$(curl -s -X POST \
-          -H "x-apikey: $VIRUSTOTAL_API_KEY" \
-          -F "file=@${{ steps.get-release.outputs.asset_name }}" \
-          "https://www.virustotal.com/api/v3/files")
-        
-        # Extract analysis ID
-        ANALYSIS_ID=$(echo "$RESPONSE" | jq -r '.data.id')
-        
-        if [ "$ANALYSIS_ID" != "null" ] && [ "$ANALYSIS_ID" != "" ]; then
-          echo "File submitted successfully. Analysis ID: $ANALYSIS_ID"
-          echo "analysis_id=$ANALYSIS_ID" >> $GITHUB_OUTPUT
-          
-          # Wait a bit for analysis to start
-          echo "Waiting for analysis to complete..."
-          sleep 30
-          
-          # Check analysis results
-          ANALYSIS_RESULT=$(curl -s \
-            -H "x-apikey: $VIRUSTOTAL_API_KEY" \
-            "https://www.virustotal.com/api/v3/analyses/$ANALYSIS_ID")
-          
-          STATUS=$(echo "$ANALYSIS_RESULT" | jq -r '.data.attributes.status')
-          echo "Analysis status: $STATUS"
-          
-          if [ "$STATUS" = "completed" ]; then
-            # Get file hash and fetch detailed results
-            FILE_HASH=$(echo "$ANALYSIS_RESULT" | jq -r '.meta.file_info.sha256')
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Download and setup VirusTotal CLI
+        run: |
+          echo "Downloading VirusTotal CLI..."
+          curl -L -o vt-cli.zip "https://github.com/VirusTotal/vt-cli/releases/download/1.1.1/Linux64.zip"
+
+          # Extract the CLI tool
+          unzip vt-cli.zip
+          chmod +x vt
+
+          # Verify the CLI tool works
+          ./vt version
+
+          # Move to a location in PATH
+          sudo mv vt /usr/local/bin/
+
+          echo "VirusTotal CLI installed successfully"
+
+      - name: Get latest release information
+        id: get-release
+        run: |
+          # Get the latest release from Azure Functions Core Tools
+          RELEASE_INFO=$(curl -s \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "User-Agent: azure-functions-core-tools-virustotal" \
+            "https://api.github.com/repos/Azure/azure-functions-core-tools/releases/latest")
+
+          TAG_NAME=$(echo "$RELEASE_INFO" | jq -r '.tag_name')
+
+          # Find the download URL for the current platform
+          DOWNLOAD_URL=$(echo "$RELEASE_INFO" | jq -r --arg pattern "${{ matrix.platform.pattern }}" \
+            '.assets[] | select(.name | contains($pattern)) | .browser_download_url' | head -1)
+
+          ASSET_NAME=$(echo "$RELEASE_INFO" | jq -r --arg pattern "${{ matrix.platform.pattern }}" \
+            '.assets[] | select(.name | contains($pattern)) | .name' | head -1)
+
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "download_url=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
+          echo "asset_name=$ASSET_NAME" >> $GITHUB_OUTPUT
+
+          echo "Release: $TAG_NAME"
+          echo "Platform: ${{ matrix.platform.name }}"
+          echo "Download URL: $DOWNLOAD_URL"
+          echo "Asset Name: $ASSET_NAME"
+
+      - name: Download Azure Functions Core Tools binary
+        if: steps.get-release.outputs.download_url != 'null' && steps.get-release.outputs.download_url != ''
+        run: |
+          echo "Downloading ${{ steps.get-release.outputs.asset_name }}..."
+          curl -L -o "${{ steps.get-release.outputs.asset_name }}" "${{ steps.get-release.outputs.download_url }}"
+
+          # Verify download
+          if [ -f "${{ steps.get-release.outputs.asset_name }}" ]; then
+            echo "Download successful!"
+            ls -la "${{ steps.get-release.outputs.asset_name }}"
             
-            FILE_RESULT=$(curl -s \
-              -H "x-apikey: $VIRUSTOTAL_API_KEY" \
-              "https://www.virustotal.com/api/v3/files/$FILE_HASH")
-            
-            MALICIOUS=$(echo "$FILE_RESULT" | jq -r '.data.attributes.last_analysis_stats.malicious')
-            SUSPICIOUS=$(echo "$FILE_RESULT" | jq -r '.data.attributes.last_analysis_stats.suspicious')
-            UNDETECTED=$(echo "$FILE_RESULT" | jq -r '.data.attributes.last_analysis_stats.undetected')
-            HARMLESS=$(echo "$FILE_RESULT" | jq -r '.data.attributes.last_analysis_stats.harmless')
-            
-            echo "VirusTotal Results:"
-            echo "- Malicious: $MALICIOUS"
-            echo "- Suspicious: $SUSPICIOUS"
-            echo "- Undetected: $UNDETECTED"
-            echo "- Harmless: $HARMLESS"
-            
-            echo "malicious=$MALICIOUS" >> $GITHUB_OUTPUT
-            echo "suspicious=$SUSPICIOUS" >> $GITHUB_OUTPUT
-            echo "undetected=$UNDETECTED" >> $GITHUB_OUTPUT
-            echo "harmless=$HARMLESS" >> $GITHUB_OUTPUT
-            echo "file_hash=$FILE_HASH" >> $GITHUB_OUTPUT
+            # Calculate file hash
+            SHA256_HASH=$(sha256sum "${{ steps.get-release.outputs.asset_name }}" | cut -d' ' -f1)
+            echo "SHA256: $SHA256_HASH"
+            echo "sha256_hash=$SHA256_HASH" >> $GITHUB_OUTPUT
           else
-            echo "Analysis not yet completed. Status: $STATUS"
+            echo "Download failed!"
+            exit 1
           fi
-        else
-          echo "Failed to submit file to VirusTotal"
-          echo "Response: $RESPONSE"
-        fi
-        
-    - name: Create scan results summary
-      if: steps.virustotal.outputs.analysis_id != ''
-      run: |
-        echo "## VirusTotal Scan Results - ${{ matrix.platform.name }}" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**File:** ${{ steps.get-release.outputs.asset_name }}" >> $GITHUB_STEP_SUMMARY
-        echo "**Release:** ${{ steps.get-release.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
-        echo "**SHA256:** ${{ steps.download.outputs.sha256_hash }}" >> $GITHUB_STEP_SUMMARY
-        echo "**Analysis ID:** ${{ steps.virustotal.outputs.analysis_id }}" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        
-        if [ "${{ steps.virustotal.outputs.malicious }}" != "" ]; then
-          echo "**Scan Results:**" >> $GITHUB_STEP_SUMMARY
-          echo "- 🔴 Malicious: ${{ steps.virustotal.outputs.malicious }}" >> $GITHUB_STEP_SUMMARY
-          echo "- 🟡 Suspicious: ${{ steps.virustotal.outputs.suspicious }}" >> $GITHUB_STEP_SUMMARY
-          echo "- ⚪ Undetected: ${{ steps.virustotal.outputs.undetected }}" >> $GITHUB_STEP_SUMMARY
-          echo "- 🟢 Harmless: ${{ steps.virustotal.outputs.harmless }}" >> $GITHUB_STEP_SUMMARY
+        id: download
+
+      - name: Submit to VirusTotal using CLI
+        if: env.VIRUSTOTAL_API_KEY != '' && steps.download.conclusion == 'success'
+        id: virustotal
+        env:
+          VTCLI_APIKEY: ${{ secrets.VTCLI_APIKEY }}
+        run: |
+          echo "Submitting ${{ steps.get-release.outputs.asset_name }} to VirusTotal using CLI..."
+
+          # Submit file to VirusTotal using CLI
+          echo "Scanning file with VirusTotal CLI..."
+          SCAN_OUTPUT=$(vt scan file "${{ steps.get-release.outputs.asset_name }}" --json 2>&1)
+
+          if [ $? -eq 0 ]; then
+            # Extract analysis ID from the CLI output
+            ANALYSIS_ID=$(echo "$SCAN_OUTPUT" | jq -r '.id // empty')
+            
+            if [ -n "$ANALYSIS_ID" ]; then
+              echo "File submitted successfully. Analysis ID: $ANALYSIS_ID"
+              echo "analysis_id=$ANALYSIS_ID" >> $GITHUB_OUTPUT
+              
+              # Wait a bit for analysis to start
+              echo "Waiting for analysis to complete..."
+              sleep 30
+              
+              # Check analysis status using CLI
+              echo "Checking analysis status..."
+              ANALYSIS_RESULT=$(vt analysis "$ANALYSIS_ID" --json 2>&1)
+              
+              if [ $? -eq 0 ]; then
+                STATUS=$(echo "$ANALYSIS_RESULT" | jq -r '.attributes.status // "unknown"')
+                echo "Analysis status: $STATUS"
+                
+                if [ "$STATUS" = "completed" ]; then
+                  # Get file hash from analysis result
+                  FILE_HASH=$(echo "$ANALYSIS_RESULT" | jq -r '.meta.file_info.sha256 // empty')
+                  
+                  if [ -n "$FILE_HASH" ]; then
+                    # Get detailed file information using CLI
+                    echo "Getting detailed scan results for hash: $FILE_HASH"
+                    FILE_RESULT=$(vt file "$FILE_HASH" --json 2>&1)
+                    
+                    if [ $? -eq 0 ]; then
+                      MALICIOUS=$(echo "$FILE_RESULT" | jq -r '.attributes.last_analysis_stats.malicious // 0')
+                      SUSPICIOUS=$(echo "$FILE_RESULT" | jq -r '.attributes.last_analysis_stats.suspicious // 0')
+                      UNDETECTED=$(echo "$FILE_RESULT" | jq -r '.attributes.last_analysis_stats.undetected // 0')
+                      HARMLESS=$(echo "$FILE_RESULT" | jq -r '.attributes.last_analysis_stats.harmless // 0')
+                      
+                      echo "VirusTotal Results:"
+                      echo "- Malicious: $MALICIOUS"
+                      echo "- Suspicious: $SUSPICIOUS"
+                      echo "- Undetected: $UNDETECTED"
+                      echo "- Harmless: $HARMLESS"
+                      
+                      echo "malicious=$MALICIOUS" >> $GITHUB_OUTPUT
+                      echo "suspicious=$SUSPICIOUS" >> $GITHUB_OUTPUT
+                      echo "undetected=$UNDETECTED" >> $GITHUB_OUTPUT
+                      echo "harmless=$HARMLESS" >> $GITHUB_OUTPUT
+                      echo "file_hash=$FILE_HASH" >> $GITHUB_OUTPUT
+                    else
+                      echo "Failed to get detailed file results"
+                      echo "File result error: $FILE_RESULT"
+                    fi
+                  else
+                    echo "Could not extract file hash from analysis result"
+                  fi
+                else
+                  echo "Analysis not yet completed. Status: $STATUS"
+                  echo "You can check the results later using: vt analysis $ANALYSIS_ID"
+                fi
+              else
+                echo "Failed to check analysis status"
+                echo "Analysis check error: $ANALYSIS_RESULT"
+              fi
+            else
+              echo "Could not extract analysis ID from scan output"
+              echo "Scan output: $SCAN_OUTPUT"
+            fi
+          else
+            echo "Failed to submit file to VirusTotal using CLI"
+            echo "CLI error output: $SCAN_OUTPUT"
+          fi
+
+      - name: Create scan results summary
+        if: steps.virustotal.outputs.analysis_id != ''
+        run: |
+          echo "## VirusTotal Scan Results - ${{ matrix.platform.name }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [ "${{ steps.virustotal.outputs.file_hash }}" != "" ]; then
-            echo "**VirusTotal Report:** https://www.virustotal.com/gui/file/${{ steps.virustotal.outputs.file_hash }}" >> $GITHUB_STEP_SUMMARY
+          echo "**File:** ${{ steps.get-release.outputs.asset_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Release:** ${{ steps.get-release.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**SHA256:** ${{ steps.download.outputs.sha256_hash }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Analysis ID:** ${{ steps.virustotal.outputs.analysis_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.virustotal.outputs.malicious }}" != "" ]; then
+            echo "**Scan Results:**" >> $GITHUB_STEP_SUMMARY
+            echo "- 🔴 Malicious: ${{ steps.virustotal.outputs.malicious }}" >> $GITHUB_STEP_SUMMARY
+            echo "- 🟡 Suspicious: ${{ steps.virustotal.outputs.suspicious }}" >> $GITHUB_STEP_SUMMARY
+            echo "- ⚪ Undetected: ${{ steps.virustotal.outputs.undetected }}" >> $GITHUB_STEP_SUMMARY
+            echo "- 🟢 Harmless: ${{ steps.virustotal.outputs.harmless }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "${{ steps.virustotal.outputs.file_hash }}" != "" ]; then
+              echo "**VirusTotal Report:** https://www.virustotal.com/gui/file/${{ steps.virustotal.outputs.file_hash }}" >> $GITHUB_STEP_SUMMARY
+            fi
           fi
-        fi
-        
-    - name: Upload scan results artifact
-      if: steps.virustotal.outputs.analysis_id != ''
-      uses: actions/upload-artifact@v4
-      with:
-        name: virustotal-results-${{ matrix.platform.name }}-${{ steps.get-release.outputs.tag_name }}
-        path: |
-          ${{ steps.get-release.outputs.asset_name }}
-        retention-days: 30
-        
-    - name: Clean up downloaded files
-      if: always()
-      run: |
-        rm -f "${{ steps.get-release.outputs.asset_name }}" || true
+
+      - name: Upload scan results artifact
+        if: steps.virustotal.outputs.analysis_id != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: virustotal-results-${{ matrix.platform.name }}-${{ steps.get-release.outputs.tag_name }}
+          path: |
+            ${{ steps.get-release.outputs.asset_name }}
+          retention-days: 30
+
+      - name: Clean up downloaded files
+        if: always()
+        run: |
+          rm -f "${{ steps.get-release.outputs.asset_name }}" || true
