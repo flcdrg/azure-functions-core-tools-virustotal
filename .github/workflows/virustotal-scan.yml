@@ -110,34 +110,34 @@ jobs:
           SCAN_OUTPUT=$(./vt scan file "${{ steps.get-release.outputs.asset_name }}" --silent 2>&1)
 
           if [ $? -eq 0 ]; then
-              # Extract analysis ID from the CLI output (second component)
-              ANALYSIS_ID=$(echo "$SCAN_OUTPUT" | awk '{print $2}')
-              if [ -n "$ANALYSIS_ID" ]; then
-                echo "File submitted successfully. Analysis ID: $ANALYSIS_ID"
-                echo "analysis_id=$ANALYSIS_ID" >> $GITHUB_OUTPUT
-                # Wait a bit for analysis to start
-                echo "Waiting for analysis to complete..."
-                sleep 30
-                # Check analysis status using CLI
+            # Extract analysis ID from the CLI output (second component)
+            ANALYSIS_ID=$(echo "$SCAN_OUTPUT" | awk '{print $2}')
+            if [ -n "$ANALYSIS_ID" ]; then
+              echo "File submitted successfully. Analysis ID: $ANALYSIS_ID"
+              echo "analysis_id=$ANALYSIS_ID" >> $GITHUB_OUTPUT
+              # Wait a bit for analysis to start
+              echo "Waiting 30 seconds for analysis to complete..."
+              sleep 30
+              # Check analysis status using CLI
               echo "Checking analysis status..."
               ANALYSIS_RESULT=$(./vt analysis "$ANALYSIS_ID" --format json 2>&1)
 
               if [ $? -eq 0 ]; then
-                STATUS=$(echo "$ANALYSIS_RESULT" | jq -r '.status // "unknown"')
+                STATUS=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].status // "unknown"')
                 echo "Analysis status: $STATUS"
                 
                 if [ "$STATUS" = "completed" ]; then
                   # Get file hash from analysis result
-                  FILE_HASH=$(echo "$ANALYSIS_RESULT" | jq -r '.meta.file_info.sha256 // empty')
+                  FILE_HASH=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].meta.file_info.sha256 // empty')
                   
                   if [ -n "$FILE_HASH" ]; then
                     # Get detailed file information using CLI
                     echo "Getting detailed scan results for hash: $FILE_HASH"
                     # Use stats from analysis result JSON
-                    MALICIOUS=$(echo "$ANALYSIS_RESULT" | jq -r '.stats.malicious // 0')
-                    SUSPICIOUS=$(echo "$ANALYSIS_RESULT" | jq -r '.stats.suspicious // 0')
-                    UNDETECTED=$(echo "$ANALYSIS_RESULT" | jq -r '.stats.undetected // 0')
-                    HARMLESS=$(echo "$ANALYSIS_RESULT" | jq -r '.stats.harmless // 0')
+                    MALICIOUS=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].stats.malicious // 0')
+                    SUSPICIOUS=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].stats.suspicious // 0')
+                    UNDETECTED=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].stats.undetected // 0')
+                    HARMLESS=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].stats.harmless // 0')
                           
                     echo "VirusTotal Results:"
                     echo "- Malicious: $MALICIOUS"
