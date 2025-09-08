@@ -106,9 +106,9 @@ jobs:
 
           # Submit file to VirusTotal using CLI
           echo "Scanning file with VirusTotal CLI..."
-          ./vt scan file "${{ steps.get-release.outputs.asset_name }}" --json 2>&1
-          
-          SCAN_OUTPUT=$(./vt scan file "${{ steps.get-release.outputs.asset_name }}" --json 2>&1)
+          # ./vt scan file "${{ steps.get-release.outputs.asset_name }}" --format json 2>&1
+
+          SCAN_OUTPUT=$(./vt scan file "${{ steps.get-release.outputs.asset_name }}" --format json 2>&1)
 
           if [ $? -eq 0 ]; then
             # Extract analysis ID from the CLI output
@@ -124,8 +124,8 @@ jobs:
               
               # Check analysis status using CLI
               echo "Checking analysis status..."
-              ANALYSIS_RESULT=$(vt analysis "$ANALYSIS_ID" --json 2>&1)
-              
+              ANALYSIS_RESULT=$(./vt analysis "$ANALYSIS_ID" --format json 2>&1)
+
               if [ $? -eq 0 ]; then
                 STATUS=$(echo "$ANALYSIS_RESULT" | jq -r '.attributes.status // "unknown"')
                 echo "Analysis status: $STATUS"
@@ -137,8 +137,8 @@ jobs:
                   if [ -n "$FILE_HASH" ]; then
                     # Get detailed file information using CLI
                     echo "Getting detailed scan results for hash: $FILE_HASH"
-                    FILE_RESULT=$(vt file "$FILE_HASH" --json 2>&1)
-                    
+                    FILE_RESULT=$(./vt file "$FILE_HASH" --format json 2>&1)
+
                     if [ $? -eq 0 ]; then
                       MALICIOUS=$(echo "$FILE_RESULT" | jq -r '.attributes.last_analysis_stats.malicious // 0')
                       SUSPICIOUS=$(echo "$FILE_RESULT" | jq -r '.attributes.last_analysis_stats.suspicious // 0')
