@@ -133,7 +133,7 @@ jobs:
               # Check analysis status using CLI
               # Retry querying analysis up to 10 times or until status is 'completed'
               MAX_RETRIES=10
-              RETRY_DELAY=10
+              RETRY_DELAY=60
               RETRY_COUNT=0
               STATUS="unknown"
               while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
