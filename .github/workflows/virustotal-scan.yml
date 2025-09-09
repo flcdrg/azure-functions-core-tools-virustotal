@@ -27,7 +27,9 @@ jobs:
           - name: "linux-x64"
             pattern: "linux-x64"
           - name: "win-x64"
-            pattern: "win-x64"
+            pattern: "Cli.win-x64" # Full version, not the 'min' one
+          - name: "win-arm64"
+            pattern: "Cli.win-arm64" # Full version, not the 'min' one
           - name: "osx-x64"
             pattern: "osx-x64"
 
