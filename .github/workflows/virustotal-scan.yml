@@ -10,16 +10,16 @@ on:
         default: false
         type: boolean
 
-  # Run when the check release workflow finds a new release
-  workflow_run:
-    workflows: ["Check Azure Functions Core Tools Latest Release"]
-    types:
-      - completed
+  # Run when last_release.txt file is updated
+  push:
+    branches:
+      - main
+    paths:
+      - 'last_release.txt' 
 
 jobs:
   download-and-scan:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
 
     strategy:
       matrix:
@@ -37,15 +37,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Check paths
-        uses: yumemi-inc/path-filter@v2
-        id: filter
-        with:
-          patterns: |
-            last_release.txt
-
       - name: Download and setup VirusTotal CLI
-        if: steps.filter.outputs.exists == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           echo "Downloading VirusTotal CLI..."
           curl -L -o vt-cli.zip "https://github.com/VirusTotal/vt-cli/releases/download/1.1.1/Linux64.zip"
@@ -60,7 +52,6 @@ jobs:
           echo "VirusTotal CLI installed successfully"
 
       - name: Get latest release information
-        if: steps.filter.outputs.exists == 'true' || github.event_name == 'workflow_dispatch'
         id: get-release
         run: |
           # Get the latest release from Azure Functions Core Tools
@@ -88,7 +79,6 @@ jobs:
           echo "Asset Name: $ASSET_NAME"
 
       - name: Download Azure Functions Core Tools binary
-        if: (steps.filter.outputs.exists == 'true' || github.event_name == 'workflow_dispatch') && steps.get-release.outputs.download_url != 'null' && steps.get-release.outputs.download_url != ''
         run: |
           echo "Downloading ${{ steps.get-release.outputs.asset_name }}..."
           curl -L -o "${{ steps.get-release.outputs.asset_name }}" "${{ steps.get-release.outputs.download_url }}"
@@ -109,7 +99,6 @@ jobs:
         id: download
 
       - name: Submit to VirusTotal using CLI
-        if: steps.filter.outputs.exists == 'true' || github.event_name == 'workflow_dispatch'
         id: virustotal
         env:
           VTCLI_APIKEY: ${{ secrets.VTCLI_APIKEY }}
@@ -190,7 +179,6 @@ jobs:
           fi
 
       - name: Create scan results summary
-        if: (steps.filter.outputs.exists == 'true' || github.event_name == 'workflow_dispatch') && steps.virustotal.outputs.analysis_id != ''
         run: |
           echo "## VirusTotal Scan Results - ${{ matrix.platform.name }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
