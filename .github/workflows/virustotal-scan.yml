@@ -10,16 +10,21 @@ on:
         default: false
         type: boolean
 
-  # Run when last_release.txt file is updated
-  push:
-    branches:
-      - main
-    paths:
-      - 'last_release.txt' 
+  # Run when the check release workflow finds a new release
+  # Note: Using workflow_run instead of push trigger because GitHub Actions
+  # doesn't trigger workflows on push events created by GITHUB_TOKEN (security feature)
+  workflow_run:
+    workflows: ["Check Azure Functions Core Tools Latest Release"]
+    types:
+      - completed
 
 jobs:
   download-and-scan:
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+
+    permissions:
+      contents: write
 
     strategy:
       matrix:
@@ -200,3 +205,9 @@ jobs:
               echo "**VirusTotal Report:** https://www.virustotal.com/gui/file/${{ steps.virustotal.outputs.file_hash }}" >> $GITHUB_STEP_SUMMARY
             fi
           fi
+
+      - name: GH Release
+        uses: softprops/action-gh-release@v2.4.2
+        with:
+          tag_name: ${{ steps.get-release.outputs.tag_name }}
+          make_latest: true
