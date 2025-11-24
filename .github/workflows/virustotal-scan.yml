@@ -24,7 +24,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
 
     permissions:
-      contents: write
+      contents: write      
 
     strategy:
       matrix:
@@ -63,16 +63,30 @@ jobs:
           RELEASE_INFO=$(curl -s \
             -H "Accept: application/vnd.github.v3+json" \
             -H "User-Agent: azure-functions-core-tools-virustotal" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/Azure/azure-functions-core-tools/releases/latest")
 
-          TAG_NAME=$(echo "$RELEASE_INFO" | jq -r '.tag_name')
+          # Debug: Check if API call was successful
+          if [ -z "$RELEASE_INFO" ] || [ "$RELEASE_INFO" = "null" ]; then
+            echo "Error: Failed to fetch release information"
+            echo "API Response: $RELEASE_INFO"
+            exit 1
+          fi
+
+          # Check for rate limit or error messages
+          if echo "$RELEASE_INFO" | jq -e '.message' > /dev/null 2>&1; then
+            echo "API Error: $(echo "$RELEASE_INFO" | jq -r '.message')"
+            exit 1
+          fi
+
+          TAG_NAME=$(echo "$RELEASE_INFO" | jq -r '.tag_name // empty')
 
           # Find the download URL for the current platform
           DOWNLOAD_URL=$(echo "$RELEASE_INFO" | jq -r --arg pattern "${{ matrix.platform.pattern }}" \
-            '.assets[] | select(.name | contains($pattern)) | .browser_download_url' | head -1)
+            '.assets[]? | select(.name | contains($pattern)) | .browser_download_url' | head -1)
 
           ASSET_NAME=$(echo "$RELEASE_INFO" | jq -r --arg pattern "${{ matrix.platform.pattern }}" \
-            '.assets[] | select(.name | contains($pattern)) | .name' | head -1)
+            '.assets[]? | select(.name | contains($pattern)) | .name' | head -1)
 
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
           echo "download_url=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
