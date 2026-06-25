@@ -221,6 +221,7 @@ jobs:
           fi
 
       - name: GH Release
+        if: matrix.platform.name == 'linux-x64'
         uses: softprops/action-gh-release@v2.4.2
         with:
           tag_name: ${{ steps.get-release.outputs.tag_name }}
