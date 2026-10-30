@@ -130,9 +130,9 @@ jobs:
           SCAN_OUTPUT=$(./vt scan file "${{ steps.get-release.outputs.asset_name }}" --silent 2>&1)
 
           if [ $? -eq 0 ]; then
-            # Extract analysis ID from the CLI output (second component)
-            ANALYSIS_ID=$(echo "$SCAN_OUTPUT" | awk '{print $2}')
-            if [ -n "$ANALYSIS_ID" ]; then
+            # The CLI prints each scanned file followed by its analysis ID.
+            ANALYSIS_ID=$(printf '%s\n' "$SCAN_OUTPUT" | awk -v asset="${{ steps.get-release.outputs.asset_name }}" '$1 == asset && NF == 2 { print $2 }')
+            if [[ "$ANALYSIS_ID" =~ ^[A-Za-z0-9_+/=-]{16,}$ ]]; then
               echo "File submitted successfully. Analysis ID: $ANALYSIS_ID"
               echo "analysis_id=$ANALYSIS_ID" >> $GITHUB_OUTPUT
               # Wait a bit for analysis to start
@@ -209,8 +209,9 @@ jobs:
                 echo "You can check the results later using: vt analysis $ANALYSIS_ID"
               fi
             else
-              echo "Could not extract analysis ID from scan output"
+              echo "Could not extract a valid analysis ID for ${{ steps.get-release.outputs.asset_name }} from VirusTotal CLI output"
               echo "Scan output: $SCAN_OUTPUT"
+              exit 1
             fi
           else
             echo "Failed to submit file to VirusTotal using CLI"
