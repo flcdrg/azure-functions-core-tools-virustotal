@@ -148,15 +148,23 @@ jobs:
                 echo "Checking analysis status (attempt $((RETRY_COUNT+1))/$MAX_RETRIES)..."
                 if ANALYSIS_RESULT=$(./vt analysis "$ANALYSIS_ID" --format json --silent 2>&1); then
                   if ! echo "$ANALYSIS_RESULT" | jq -e 'type == "object" or type == "array"' > /dev/null 2>&1; then
-                    echo "VirusTotal CLI returned invalid JSON while checking analysis status:"
-                    echo "$ANALYSIS_RESULT"
-                    exit 1
-                  fi
-                  ANALYSIS_DATA=$(echo "$ANALYSIS_RESULT" | jq -c 'if type == "array" then .[0] else . end')
-                  STATUS=$(echo "$ANALYSIS_DATA" | jq -r '.data.attributes.status // .attributes.status // .status // "unknown"')
-                  echo "Analysis status: $STATUS"
-                  if [ "$STATUS" = "completed" ]; then
-                    break
+                    case "$ANALYSIS_RESULT" in
+                      *"not found"*)
+                        echo "Analysis is not available yet; retrying in $RETRY_DELAY seconds."
+                        ;;
+                      *)
+                        echo "VirusTotal CLI returned invalid JSON while checking analysis status:"
+                        echo "$ANALYSIS_RESULT"
+                        exit 1
+                        ;;
+                    esac
+                  else
+                    ANALYSIS_DATA=$(echo "$ANALYSIS_RESULT" | jq -c 'if type == "array" then .[0] else . end')
+                    STATUS=$(echo "$ANALYSIS_DATA" | jq -r '.data.attributes.status // .attributes.status // .status // "unknown"')
+                    echo "Analysis status: $STATUS"
+                    if [ "$STATUS" = "completed" ]; then
+                      break
+                    fi
                   fi
                 else
                   case "$ANALYSIS_RESULT" in
