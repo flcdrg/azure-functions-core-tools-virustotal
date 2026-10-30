@@ -146,9 +146,14 @@ jobs:
               STATUS="unknown"
               while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
                 echo "Checking analysis status (attempt $((RETRY_COUNT+1))/$MAX_RETRIES)..."
-                ANALYSIS_RESULT=$(./vt analysis "$ANALYSIS_ID" --format json 2>&1)
-                if [ $? -eq 0 ]; then
-                  STATUS=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].status // "unknown"')
+                if ANALYSIS_RESULT=$(./vt analysis "$ANALYSIS_ID" --format json --silent 2>&1); then
+                  if ! echo "$ANALYSIS_RESULT" | jq -e 'type == "object" or type == "array"' > /dev/null 2>&1; then
+                    echo "VirusTotal CLI returned invalid JSON while checking analysis status:"
+                    echo "$ANALYSIS_RESULT"
+                    exit 1
+                  fi
+                  ANALYSIS_DATA=$(echo "$ANALYSIS_RESULT" | jq -c 'if type == "array" then .[0] else . end')
+                  STATUS=$(echo "$ANALYSIS_DATA" | jq -r '.data.attributes.status // .attributes.status // .status // "unknown"')
                   echo "Analysis status: $STATUS"
                   if [ "$STATUS" = "completed" ]; then
                     break
@@ -156,21 +161,21 @@ jobs:
                 else
                   echo "Failed to check analysis status"
                   echo "Analysis check error: $ANALYSIS_RESULT"
+                  exit 1
                 fi
                 RETRY_COUNT=$((RETRY_COUNT+1))
                 sleep $RETRY_DELAY
               done
               if [ "$STATUS" = "completed" ]; then
-                # Get file hash from analysis result
-                FILE_HASH=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].meta.file_info.sha256 // empty')
+                FILE_HASH="${{ steps.download.outputs.sha256_hash }}"
                 if [ -n "$FILE_HASH" ]; then
                   # Get detailed file information using CLI
                   echo "Getting detailed scan results for hash: $FILE_HASH"
                   # Use stats from analysis result JSON
-                  MALICIOUS=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].stats.malicious // 0')
-                  SUSPICIOUS=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].stats.suspicious // 0')
-                  UNDETECTED=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].stats.undetected // 0')
-                  HARMLESS=$(echo "$ANALYSIS_RESULT" | jq -r '.[0].stats.harmless // 0')
+                  MALICIOUS=$(echo "$ANALYSIS_DATA" | jq -r '.data.attributes.stats.malicious // .attributes.stats.malicious // .stats.malicious // 0')
+                  SUSPICIOUS=$(echo "$ANALYSIS_DATA" | jq -r '.data.attributes.stats.suspicious // .attributes.stats.suspicious // .stats.suspicious // 0')
+                  UNDETECTED=$(echo "$ANALYSIS_DATA" | jq -r '.data.attributes.stats.undetected // .attributes.stats.undetected // .stats.undetected // 0')
+                  HARMLESS=$(echo "$ANALYSIS_DATA" | jq -r '.data.attributes.stats.harmless // .attributes.stats.harmless // .stats.harmless // 0')
                   echo "VirusTotal Results:"
                   echo "- Malicious: $MALICIOUS"
                   echo "- Suspicious: $SUSPICIOUS"
