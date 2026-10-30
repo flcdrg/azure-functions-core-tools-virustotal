@@ -159,9 +159,16 @@ jobs:
                     break
                   fi
                 else
-                  echo "Failed to check analysis status"
-                  echo "Analysis check error: $ANALYSIS_RESULT"
-                  exit 1
+                  case "$ANALYSIS_RESULT" in
+                    *"not found"*)
+                      echo "Analysis is not available yet; retrying in $RETRY_DELAY seconds."
+                      ;;
+                    *)
+                      echo "Failed to check analysis status"
+                      echo "Analysis check error: $ANALYSIS_RESULT"
+                      exit 1
+                      ;;
+                  esac
                 fi
                 RETRY_COUNT=$((RETRY_COUNT+1))
                 sleep $RETRY_DELAY
