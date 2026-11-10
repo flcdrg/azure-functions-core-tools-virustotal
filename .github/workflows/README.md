@@ -19,6 +19,7 @@ This directory contains GitHub Actions workflows for monitoring and scanning Azu
 - Tracks release changes
 - Displays release information in job summary
 - Commits release tracking information
+- Explicitly dispatches the scan workflow after successfully pushing a new release update
 
 ### 2. Download and Scan with VirusTotal (`virustotal-scan.yml`)
 
@@ -27,7 +28,7 @@ This directory contains GitHub Actions workflows for monitoring and scanning Azu
 **Triggers:**
 
 - Manual execution via workflow_dispatch
-- Automatically when the release check workflow completes successfully
+- Explicit workflow_dispatch from the release check workflow when a new release is detected and its tracking update is pushed successfully
 
 **Features:**
 
@@ -59,7 +60,7 @@ To use the VirusTotal scanning functionality:
 The workflows require the following permissions:
 
 - `contents: write` (for committing release tracking files)
-- `actions: read` (for workflow_run triggers)
+- `actions: write` in the release check workflow (for dispatching the scan workflow)
 
 ## Usage
 
@@ -75,6 +76,9 @@ Both workflows can be triggered manually:
 
 - The release check workflow runs daily to monitor for new releases
 - The VirusTotal scan workflow automatically triggers when new releases are detected
+- Checks with no new release do not trigger a scan
+- The check dispatches the scan on the same branch using `GITHUB_TOKEN`; explicit workflow_dispatch events are allowed even though pushes made with that token do not trigger workflows
+- Commit, push, and dispatch failures fail the check workflow rather than being ignored
 
 ## Output
 
