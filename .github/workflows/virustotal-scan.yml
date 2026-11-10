@@ -1,7 +1,7 @@
 name: Download and Scan Azure Functions Core Tools with VirusTotal CLI
 
 on:
-  # Run manually
+  # Run manually or explicitly dispatched by the release check workflow
   workflow_dispatch:
     inputs:
       force_download:
@@ -10,18 +10,9 @@ on:
         default: false
         type: boolean
 
-  # Run when the check release workflow finds a new release
-  # Note: Using workflow_run instead of push trigger because GitHub Actions
-  # doesn't trigger workflows on push events created by GITHUB_TOKEN (security feature)
-  workflow_run:
-    workflows: ["Check Azure Functions Core Tools Latest Release"]
-    types:
-      - completed
-
 jobs:
   download-and-scan:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
 
     permissions:
       contents: write      

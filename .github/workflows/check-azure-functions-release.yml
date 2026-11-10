@@ -14,6 +14,7 @@ jobs:
 
     permissions:
       contents: write
+      actions: write
 
     steps:
       - name: Checkout repository
@@ -91,5 +92,13 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add last_release.txt
-          git commit -m "Update latest release to ${{ steps.get-release.outputs.tag_name }}" || exit 0
-          git push || exit 0
+          git commit -m "Update latest release to ${{ steps.get-release.outputs.tag_name }}"
+          git push
+
+      - name: Trigger VirusTotal scan
+        if: steps.check-new.outputs.is_new == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.ref_name }}
+        run: gh workflow run virustotal-scan.yml --ref "$WORKFLOW_REF"
